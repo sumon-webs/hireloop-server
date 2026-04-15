@@ -134,7 +134,7 @@ async function run() {
       const data = req.body;
       const subsInfo = {
         ...data,
-        subscribedate: new Date(),
+        subscribedate: new Date(), 
       };
       const result = await subscriptioncollection.insertOne(subsInfo);
 
