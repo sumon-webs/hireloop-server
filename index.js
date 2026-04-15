@@ -31,12 +31,17 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const myDB = client.db("hire-loop");
     const jobCollecion = myDB.collection("jobs");
     const companyCollection = myDB.collection("companies");
+    const applicationCollection = myDB.collection("applications");
+    const planCollection = myDB.collection("plans");
+    const subscriptioncollection = myDB.collection("subscriptions");
+    const userCollection = myDB.collection("user");
 
+    // Jobs api
     app.get("/api/jobs", async (req, res) => {
       const query = {};
       if (req.query.companyId) {
@@ -55,11 +60,16 @@ async function run() {
     app.post("/api/jobs", async (req, res) => {
       const jobData = req.body;
 
-      const result = await jobCollecion.insertOne(jobData);
+      const query = {
+        ...jobData,
+        postDate: new Date(),
+      };
+
+      const result = await jobCollecion.insertOne(query);
       res.send(result);
-      console.log(result);
     });
 
+    // Company api
     app.post("/api/companies", async (req, res) => {
       const company = req.body;
       const result = await companyCollection.insertOne(company);
@@ -67,16 +77,11 @@ async function run() {
     });
 
     app.get("/api/jobs/:id", async (req, res) => {
-      console.log("Hit")
-      const id = req.params.id
-      const query = {_id: new ObjectId(id)}
-      console.log(query)
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
       const result = await jobCollecion.findOne(query);
       res.send(result);
-      console.log(result)
     });
-
-    
 
     app.get("/api/companies", async (req, res) => {
       const query = {};
@@ -85,6 +90,65 @@ async function run() {
       }
       const result = await companyCollection.find(query).toArray();
       res.send(result);
+    });
+
+    // Application api
+    app.get("/api/applications", async (req, res) => {
+      const query = {};
+      if (req.query.seekerId) {
+        query.seekerId = req.query.seekerId;
+      }
+      if (req.query.jobId) {
+        query.jobId = req.query.jobId;
+      }
+      const result = await applicationCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/api/applications", async (req, res) => {
+      const applicationData = req.body;
+      const query = {
+        ...applicationData,
+        applyDate: new Date(),
+      };
+
+      const result = await applicationCollection.insertOne(query);
+      res.send(result);
+    });
+
+    // plans
+    app.get("/api/plans", async (req, res) => {
+      const query = {};
+
+      if (req.query.planId) {
+        query.planId = req.query.planId;
+      }
+
+      const plan = await planCollection.findOne(query);
+      res.send(plan);
+    });
+
+    // subscription
+    app.post("/api/subscriptions", async (req, res) => {
+      console.log("Hit");
+      const data = req.body;
+      const subsInfo = {
+        ...data,
+        subscribedate: new Date(),
+      };
+      const result = await subscriptioncollection.insertOne(subsInfo);
+
+      const filter = { email: data.email };
+      const updateDocument = {
+        $set: {
+          plan: data.planId,
+        },
+      };
+      const updateResult = await userCollection.updateOne(
+        filter,
+        updateDocument,
+      );
+      res.send(updateResult);
     });
 
     await client.db("admin").command({ ping: 1 });
