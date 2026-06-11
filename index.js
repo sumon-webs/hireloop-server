@@ -72,7 +72,11 @@ async function run() {
     // Company api
     app.post("/api/companies", async (req, res) => {
       const company = req.body;
-      const result = await companyCollection.insertOne(company);
+      const query = {
+        ...company,
+        createData: new Date(),
+      };
+      const result = await companyCollection.insertOne(query);
       res.send(result);
     });
 
@@ -84,11 +88,36 @@ async function run() {
     });
 
     app.get("/api/companies", async (req, res) => {
+      const result = await companyCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/api/my/company", async (req, res) => {
       const query = {};
       if (req.query.recruiterId) {
         query.recruiterId = req.query.recruiterId;
       }
-      const result = await companyCollection.find(query).toArray();
+      const result = await companyCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.patch("/api/companies/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const { status } = req.body;
+
+      const filter = {
+        _id: new ObjectId(id),
+      };
+
+      const updateDoc = {
+        $set: {
+          status,
+        },
+      };
+
+      const result = await companyCollection.updateOne(filter, updateDoc);
+
       res.send(result);
     });
 
@@ -134,7 +163,7 @@ async function run() {
       const data = req.body;
       const subsInfo = {
         ...data,
-        subscribedate: new Date(), 
+        subscribedate: new Date(),
       };
       const result = await subscriptioncollection.insertOne(subsInfo);
 
