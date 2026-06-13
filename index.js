@@ -40,21 +40,113 @@ async function run() {
     const planCollection = myDB.collection("plans");
     const subscriptioncollection = myDB.collection("subscriptions");
     const userCollection = myDB.collection("user");
+    const sessionCollection = myDB.collection("session");
+
+    // Verify token
+    const verifyToken = async (req, res, next) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+          return res.status(401).send({
+            success: false,
+            message: "Unauthorized access",
+          });
+        }
+
+        const token = authHeader.split(" ")[1];
+
+        if (!token) {
+          return res.status(401).send({
+            success: false,
+            message: "Token not found",
+          });
+        }
+
+        const sessionToken = { token: token };
+
+        const session = await sessionCollection.findOne(sessionToken);
+        const userId = session?.userId;
+
+        const user = await userCollection.findOne({ _id: userId });
+
+        req.user = user;
+        // এখানে JWT verify করবে
+        // const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // req.user = decoded;
+
+        next();
+      } catch (error) {
+        return res.status(401).send({
+          success: false,
+          message: "Invalid token",
+        });
+      }
+    };
+
+    const verifyRecruiter = async (req, res, next) => {
+      const user = req.user;
+
+      if (user?.role !== "recruiter") {
+        return res.status(403).send({ message: "Forbiden" });
+      }
+      next();
+    };
+
+    const verifySeeker = async (req, res, next) => {
+      const user = req.user;
+
+      if (user?.role !== "seeker") {
+        return res.status(403).send({ message: "Forbiden" });
+      }
+      next();
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      const user = req.user;
+      if (user?.role !== "admin") {
+        return res.status(403).send({ message: "Forbiden" });
+      }
+      next();
+    };
 
     // Jobs api
     app.get("/api/jobs", async (req, res) => {
-      const query = {};
-      if (req.query.companyId) {
-        query.companyId = req.query.companyId;
-      }
-      if (req.query.status) {
-        query.status = req.query.status;
-      }
+      try {
+        const { companyId, status } = req.query;
 
-      const cursor = jobCollecion.find(query);
-      const result = await cursor.toArray();
+        const matchStage = {};
 
-      res.send(result);
+        if (companyId) {
+          matchStage.companyId = companyId;
+        }
+
+        if (status) {
+          matchStage.status = status;
+        }
+
+        const pipeline = [
+          { $match: matchStage },
+
+          {
+            $facet: {
+              jobs: [{ $sort: { postDate: -1 } }],
+
+              totalCount: [{ $count: "count" }],
+            },
+          },
+        ];
+
+        const result = await jobCollecion.aggregate(pipeline).toArray();
+
+        const response = {
+          jobs: result[0]?.jobs || [],
+          totalJobs: result[0]?.totalCount?.[0]?.count || 0,
+        };
+
+        res.send(response);
+      } catch (error) {
+        res.status(500).send({ message: "Server Error", error });
+      }
     });
 
     app.post("/api/jobs", async (req, res) => {
@@ -92,40 +184,54 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/my/company", async (req, res) => {
-      const query = {};
-      if (req.query.recruiterId) {
-        query.recruiterId = req.query.recruiterId;
-      }
-      const result = await companyCollection.findOne(query);
-      res.send(result);
-    });
+    app.get(
+      "/api/my/company",
+      verifyToken,
+      verifyRecruiter,
+      async (req, res) => {
+        const query = {};
+        if (req.query.recruiterId) {
+          query.recruiterId = req.query.recruiterId;
+        }
+        const result = await companyCollection.findOne(query);
+        res.send(result);
+      },
+    );
 
-    app.patch("/api/companies/:id", async (req, res) => {
-      const id = req.params.id;
+    app.patch(
+      "/api/companies/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
 
-      const { status } = req.body;
+        const { status } = req.body;
 
-      const filter = {
-        _id: new ObjectId(id),
-      };
+        const filter = {
+          _id: new ObjectId(id),
+        };
 
-      const updateDoc = {
-        $set: {
-          status,
-        },
-      };
+        const updateDoc = {
+          $set: {
+            status,
+          },
+        };
 
-      const result = await companyCollection.updateOne(filter, updateDoc);
+        const result = await companyCollection.updateOne(filter, updateDoc);
 
-      res.send(result);
-    });
+        res.send(result);
+      },
+    );
 
     // Application api
-    app.get("/api/applications", async (req, res) => {
+    app.get("/api/applications", verifyToken, async (req, res) => {
       const query = {};
       if (req.query.seekerId) {
         query.seekerId = req.query.seekerId;
+
+        if (req.user?._id.toString() !== req.query.seekerId) {
+          return res.status(403).send({ message: "Forbiden" });
+        }
       }
       if (req.query.jobId) {
         query.jobId = req.query.jobId;
