@@ -112,40 +112,77 @@ async function run() {
     // Jobs api
     app.get("/api/jobs", async (req, res) => {
       try {
-        const { companyId, status } = req.query;
+        const { companyId, status, jobType, location, search } = req.query;
 
-        const matchStage = {};
+        const query = {};
 
         if (companyId) {
-          matchStage.companyId = companyId;
+          query.companyId = companyId;
         }
 
         if (status) {
-          matchStage.status = status;
+          query.status = status;
         }
 
-        const pipeline = [
-          { $match: matchStage },
+        if (jobType) {
+          query.jobType = jobType;
+        }
 
-          {
-            $facet: {
-              jobs: [{ $sort: { postDate: -1 } }],
+        if (location) {
+          query.location = location;
+        }
 
-              totalCount: [{ $count: "count" }],
+        if (search) {
+          query.$or = [
+            {
+              title: {
+                $regex: search,
+                $options: "i",
+              },
             },
-          },
-        ];
+            {
+              companyName: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              description: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+          ];
+        }
 
-        const result = await jobCollecion.aggregate(pipeline).toArray();
+        if (req.query.page) {
+          const page = parseInt(req.query.page) || 1;
+          const perPage = parseInt(req.query.perPage) || 12;
 
-        const response = {
-          jobs: result[0]?.jobs || [],
-          totalJobs: result[0]?.totalCount?.[0]?.count || 0,
-        };
+          const skipData = (page - 1) * perPage;
+          const total = await jobCollecion.countDocuments(query);
+          const jobs = await jobCollecion
+            .find(query)
+            .sort({ postDate: -1 })
+            .skip(skipData)
+            .limit(perPage)
+            .toArray();
 
-        res.send(response);
+          return res.send({ total, jobs });
+        }
+        const jobs = await jobCollecion
+          .find(query)
+          .sort({ postDate: -1 })
+          .toArray();
+
+        res.send(jobs);
       } catch (error) {
-        res.status(500).send({ message: "Server Error", error });
+        console.error(error);
+
+        res.status(500).send({
+          success: false,
+          message: "Server Error",
+        });
       }
     });
 
